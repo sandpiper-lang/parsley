@@ -156,6 +156,35 @@ protocol ParsleyTerminal: Parsley {
   
 }
 
+class ParsleyExact: ParsleyTerminal {
+  private let exact: String
+  let kind: ASTKind
+  
+  required init(text: String, kind: ASTKind) {
+    self.exact = text
+    self.kind = kind
+  }
+  
+  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+    guard !text.isEmpty
+      else { throw ParsError.EmptyInput(origin: "in Terminal exactly \"\(self.exact)\"") }
+    
+    guard text.hasPrefix(self.exact)
+      else { throw ParsError.NoMatch(origin: "in Terminal exactly \"\(self.exact)\"") }
+    
+    return ParsleyAST(kind: self.kind,
+                      children: [],
+                      text: self.exact,
+                      parentOffset: parentOffset)
+    
+  }
+  
+  func ofKind(imposed: ASTKind) -> Self {
+    return self.dynamicType.init(text: self.exact, kind: imposed)
+  }
+  
+}
+
 class ParsleyWildcard: ParsleyTerminal {
   let sigChars: String.UnicodeScalarView
   let inverse: Bool
@@ -484,12 +513,17 @@ prefix func ! (term: ParsleyWildcard) -> ParsleyWildcard {
 }
 
 prefix operator % {}
-prefix func % (terminalChars: String) -> ParsleyWildcard {
+prefix func % (terminalExact: String) -> ParsleyExact {
+  return ParsleyExact(text: terminalExact, kind: .Terminal)
+}
+
+prefix operator * {}
+prefix func * (terminalChars: String) -> ParsleyWildcard {
   return ParsleyWildcard(with: terminalChars)
 }
 
-prefix operator !% {}
-prefix func !% (nonterminalChars: String) -> ParsleyWildcard {
+prefix operator !* {}
+prefix func !* (nonterminalChars: String) -> ParsleyWildcard {
   return ParsleyWildcard(excepting: nonterminalChars)
 }
 
@@ -514,13 +548,13 @@ func | <LHSType: ParsleyWildcard> (lhs: LHSType, rhs: ParsleyWildcard) -> LHSTyp
 
 
 
-let literal_whitespace = %(" \n\r\t" +
+let literal_whitespace = *(" \n\r\t" +
   "\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}" +
   "\u{2008}\u{2009}\u{200a}\u{202f}\u{205f}\u{3000}")  -- .Whitespace
 
 
-let comment_starter = %";"                      -- .Commentary
-let eol = %"\n"                                 -- .Whitespace
+let comment_starter = *";"                      -- .Commentary
+let eol = *"\n"                                 -- .Whitespace
 let commentBody = !eol                          -- .Commentary
 let commentary =
   comment_starter + commentBody + eol~          -- .Commentary
@@ -528,11 +562,11 @@ let commentary =
 let ws = (literal_whitespace || commentary)...  -- .Whitespace
 
 
-let block_openers = %"([{\"“‘"
-let block_closers = %"}])\"”’"
+let block_openers = *"([{\"“‘"
+let block_closers = *"}])\"”’"
 let block_delimiters = block_openers | block_closers
 
-let declaration_end = %"."
+let declaration_end = *"."
 
 let token_separatives = block_delimiters
   | declaration_end
@@ -541,9 +575,9 @@ let token_separatives = block_delimiters
 let bare_word = !token_separatives              -- .BareWord
 
 let symbolic_reference_expression = bare_word   -- .Expression(.SymbolicReference)
-let integer_literal = (%"-")~ + %"0123456789"
-let dq_text_segments = !(%"”") + %"”"
-let dq_text_literal = %"“" + dq_text_segments + %"”"
+let integer_literal = (*"-")~ + *"0123456789"
+let dq_text_segments = !*"”" + *"”"
+let dq_text_literal = *"“" + dq_text_segments + *"”"
 
 
 let inputs = "" +

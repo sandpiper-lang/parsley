@@ -10,22 +10,22 @@ The Parsley DSL
 
 The Sandpiper language grammar is specified for both human and machine consumption, simultaneously. Rather than using an established metagrammar like EBNF, Parsley defines its own grammar as a domain-specific language in Swift. As Sandpiper matures, we will change the DSL to be specified in Sandpiper itself.
 
-A percent-prefixed string `%""` specifies a wildcard matcher that matches a run of one or more characters in the input, so long as they appear within the string. For instance, `%"0123456789abcdef"` would match any hexadecimal number such as `baddb33f`. The wildcard matcher can be inverted—to match any input *except* the specified characters—by prefixing with bang:
+We make a matcher of a literal string using the percent prefix operator `%`. So `%"=>"` would match the literal hash-rocket `=>` and nothing else from the input.
 
-    let non_whitespace = !%"\n\r\t "
+An asterisk-prefixed string `*""` specifies a wildcard matcher that matches a run of one or more characters in the input, so long as they appear within the string. For instance, `*"0123456789abcdef"` would match any hexadecimal number such as `baddb33f`. The wildcard matcher can be inverted—to match any input *except* the specified characters—by prefixing with bang:
+
+    let non_whitespace = !*"\n\r\t "
     // or
-    let whitespace = %"\n\r\t "
+    let whitespace = *"\n\r\t "
     let non_whitespace = !whitespace
 
 You can combine (union) two sets of matchable characters using the bitwise-or operator `|`. You can intersect them using bitwise-and `&`.
-
-A literal string itself is overloaded to match itself verbatim in the input.
 
 Matchers can be made optional by suffixing them with a tilde `~`. One thing you see a lot in the Sandpiper grammar is `ws`, which matches a run of whitespace characters (including comments). Sometimes whitespace is not strictly necessary, so you also often see it written as `ws~`. When a matcher is made optional, it may parse and return a result as the `Nil` AST kind (more on that later).
 
 Matchers can be chained in-order, using the addition operator `+`. Here we look for an expression surrounded by parentheses, and optional whitespace on either side:
 
-    let sub_expression = "(" + ws~ + expression + ws~ + ")"
+    let sub_expression = %"(" + ws~ + expression + ws~ + %")"
 
 Matchers can be combined into a “hopper,” which matches the first sub-grammar that can be successfully parsed. In the DSL, we construct these with the logical-or operator:
 
