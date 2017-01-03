@@ -15,41 +15,41 @@ import Foundation
 
 
 enum ASTKind {
-  case Generic
-  case Terminal
-  case Sequence
-  case Nil
+  case generic
+  case terminal
+  case sequence
+  case `nil`
   
-  case Whitespace
-  case Commentary
-  case BareWord
-  case Expression(ExpressionKind)
+  case whitespace
+  case commentary
+  case bareWord
+  case expression(ExpressionKind)
   
 }
 
 enum ExpressionKind {
-  case SymbolicReference
+  case symbolicReference
 }
 
 extension ASTKind: Equatable {}
 func == (lhs: ASTKind, rhs: ASTKind) -> Bool {
   switch (lhs, rhs) {
-  case (.Generic, .Generic):
+  case (.generic, .generic):
     return true
-  case (.Terminal, .Terminal):
+  case (.terminal, .terminal):
     return true
-  case (.Sequence, .Sequence):
+  case (.sequence, .sequence):
     return true
-  case (.Nil, .Nil):
+  case (.nil, .nil):
     return true
-  case (.Whitespace, .Whitespace):
+  case (.whitespace, .whitespace):
     return true
-  case (.Commentary, .Commentary):
+  case (.commentary, .commentary):
     return true
-  case (.BareWord, .BareWord):
+  case (.bareWord, .bareWord):
     return true
     
-  case (let .Expression(lhsExpKind), let .Expression(rhsExpKind)):
+  case (let .expression(lhsExpKind), let .expression(rhsExpKind)):
     return lhsExpKind == rhsExpKind
     
   default:
@@ -57,9 +57,9 @@ func == (lhs: ASTKind, rhs: ASTKind) -> Bool {
   }
 }
 
-enum ParsError: ErrorType {
-  case EmptyInput(origin: String)
-  case NoMatch(origin: String)
+enum ParsError: Error {
+  case emptyInput(origin: String)
+  case noMatch(origin: String)
 }
 
 
@@ -68,7 +68,7 @@ func * (lhs: String, rhs: Int) -> String {
   var produce = ""
   produce.reserveCapacity(lhs.utf8.count * rhs)
   for _ in 0..<rhs {
-    produce.appendContentsOf(lhs)
+    produce.append(lhs)
   }
   
   return produce
@@ -89,37 +89,37 @@ class ParsleyAST {
   }
   
   convenience init(children: [ParsleyAST], text: String, parentOffset: Int) {
-    self.init(kind: .Generic, children: children, text: text, parentOffset: parentOffset)
+    self.init(kind: .generic, children: children, text: text, parentOffset: parentOffset)
   }
   
   convenience init(children: [ParsleyAST], text: String) {
-    self.init(kind: .Generic, children: children, text: text, parentOffset: 0)
+    self.init(kind: .generic, children: children, text: text, parentOffset: 0)
   }
   
   convenience init() {
-    self.init(kind: .Nil, children: [], text: "", parentOffset: 0)
+    self.init(kind: .nil, children: [], text: "", parentOffset: 0)
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
-    return self.dynamicType.init( kind: imposed,
+  func ofKind(_ imposed: ASTKind) -> Self {
+    return type(of: self).init( kind: imposed,
                                   children: self.children,
                                   text: self.text,
                                   parentOffset: self.parentOffset )
   }
   
-  func sortaYAML(indentationLevel: Int = 0) -> String {
+  func sortaYAML(_ indentationLevel: Int = 0) -> String {
     let indentation = "  " * indentationLevel
     let childrenMap = children.map { child in child.sortaYAML(indentationLevel + 1) }
-      .joinWithSeparator("\n")
+      .joined(separator: "\n")
     
     switch kind {
-    case .Sequence:
+    case .sequence:
       return indentation + "Sequence:\n\(childrenMap)"
       
-    case .Nil:
+    case .nil:
       return ""
       
-    case .Whitespace:
+    case .whitespace:
       let iffyChildren = childrenMap.isEmpty ? "" : ":\n\(childrenMap)"
       return indentation + "Whitespace (\(text.unicodeScalars.count) chars)\(iffyChildren)"
       
@@ -135,9 +135,9 @@ class ParsleyAST {
 
 
 protocol Parsley {
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST
   
-  func ofKind(imposed: ASTKind) -> Self
+  func ofKind(_ imposed: ASTKind) -> Self
   var kind: ASTKind { get }
 }
 
@@ -157,20 +157,20 @@ protocol ParsleyTerminal: Parsley {
 }
 
 class ParsleyExact: ParsleyTerminal {
-  private let exact: String
+  fileprivate let exact: String
   let kind: ASTKind
   
   required init(text: String, kind: ASTKind) {
     self.exact = text
     self.kind = kind
   }
-  
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     guard !text.isEmpty
-      else { throw ParsError.EmptyInput(origin: "in Terminal exactly \"\(self.exact)\"") }
+      else { throw ParsError.emptyInput(origin: "in Terminal exactly \"\(self.exact)\"") }
     
     guard text.hasPrefix(self.exact)
-      else { throw ParsError.NoMatch(origin: "in Terminal exactly \"\(self.exact)\"") }
+      else { throw ParsError.noMatch(origin: "in Terminal exactly \"\(self.exact)\"") }
     
     return ParsleyAST(kind: self.kind,
                       children: [],
@@ -179,64 +179,67 @@ class ParsleyExact: ParsleyTerminal {
     
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
-    return self.dynamicType.init(text: self.exact, kind: imposed)
+  func ofKind(_ imposed: ASTKind) -> Self {
+    return type(of: self).init(text: self.exact, kind: imposed)
   }
-  
+
 }
 
-class ParsleyWildcard: ParsleyTerminal {
+class ParsleyCharoset: ParsleyTerminal {
+  // A Char o' Set is not a "charset,"
+  // it matches one character from a set.
+
   let sigChars: String.UnicodeScalarView
   let inverse: Bool
   var positive: Bool { return !inverse }
   let kind: ASTKind
   
-  required init(with: String, kind: ASTKind = .Terminal) {
+  required init(with: String, kind: ASTKind = .terminal) {
     sigChars = with.unicodeScalars
     inverse = false
     self.kind = kind
   }
   
-  required init(excepting: String, kind: ASTKind = .Terminal) {
+  required init(excepting: String, kind: ASTKind = .terminal) {
     sigChars = excepting.unicodeScalars
     inverse = true
     self.kind = kind
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
+  func ofKind(_ imposed: ASTKind) -> Self {
     if inverse {
-      return self.dynamicType.init(excepting: String(sigChars), kind: imposed)
+      return type(of: self).init(excepting: String(sigChars), kind: imposed)
     } else {
-      return self.dynamicType.init(with: String(sigChars), kind: imposed)
+      return type(of: self).init(with: String(sigChars), kind: imposed)
     }
   }
   
   func not() -> Self {
     if inverse {
-      return self.dynamicType.init(with: String(sigChars), kind: self.kind)
+      return type(of: self).init(with: String(sigChars), kind: self.kind)
     } else {
-      return self.dynamicType.init(excepting: String(sigChars), kind: self.kind)
+      return type(of: self).init(excepting: String(sigChars), kind: self.kind)
     }
   }
   
-  func union(other: ParsleyWildcard) -> Self {
+  func union(_ other: ParsleyWildcard) -> Self {
     // The logical union of the character sets. Any character included
     // in either operand will be included in the result.
-    let resultantKind = (other.kind == self.kind) ? self.kind : .Terminal
+    let resultantKind = (other.kind == self.kind) ? self.kind : .terminal
     
     if self.positive && other.positive {
       let combinedChars = String(self.sigChars) + String(other.sigChars)
-      return self.dynamicType.init(with: combinedChars, kind: resultantKind)
+      return type(of: self).init(with: combinedChars, kind: resultantKind)
       
     } else if self.inverse && other.inverse {
       // Keep only the mutual exclusions:
       var mutualChars = ""
       for potential in other.sigChars {
         if self.sigChars.contains(potential) {
-          mutualChars.append(potential)
+          mutualChars.append(String(potential))
         }
       }
-      return self.dynamicType.init(excepting: mutualChars, kind: resultantKind)
+      return type(of: self).init(excepting: mutualChars, kind: resultantKind)
       
     } else /* one positive and other inverse */ {
       var excludedChars: String
@@ -250,40 +253,32 @@ class ParsleyWildcard: ParsleyTerminal {
       }
       // Same as the last one, but with roles reversed:
       for includedChar in includedChars {
-        excludedChars = excludedChars.stringByReplacingOccurrencesOfString(String(includedChar),
-                                                                           withString: "")
+        excludedChars = excludedChars.replacingOccurrences(of: String(includedChar),
+                                                                           with: "")
       }
-      return self.dynamicType.init(excepting: excludedChars, kind: resultantKind)
+      return type(of: self).init(excepting: excludedChars, kind: resultantKind)
       
     }
   }
   
-  func intersect(other: ParsleyWildcard) -> Self {
+  func intersect(_ other: ParsleyWildcard) -> Self {
     // Invert both operands, union them, and invert the result back:
     return self.not().union( other.not() ).not()
   }
   
   
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     let text_chars = text.unicodeScalars
     guard !text_chars.isEmpty
-      else { throw ParsError.EmptyInput(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
+      else { throw ParsError.emptyInput(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
     
     // Surely there has to be a better way of doing this...
-    var match = ""
-    for text_char in text_chars {
-      if charMatch(text_char) {
-        match.append(text_char)
-        
-      } else {
-        break
-      }
-    }
+    let match = ""
     
     // Ensure we found something! This is different from the guard-
     // check above, in that we need to distinguish no-input from no-match.
     guard !match.isEmpty
-      else { throw ParsError.NoMatch(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
+      else { throw ParsError.noMatch(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
     
     return ParsleyAST( kind: kind,
                        children: [],
@@ -292,7 +287,7 @@ class ParsleyWildcard: ParsleyTerminal {
   }
   
   
-  private func charMatch(text_char: UnicodeScalar) -> Bool {
+  fileprivate func charMatch(_ text_char: UnicodeScalar) -> Bool {
     let is_match = sigChars.contains(text_char)
     return is_match != inverse  // logical xor
   }
@@ -301,24 +296,60 @@ class ParsleyWildcard: ParsleyTerminal {
 }
 
 
+class ParsleyWildcard: ParsleyCharoset {
+  // This is simply a repeatable run of a Char o' Set.
+  
+  override func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
+    let text_chars = text.unicodeScalars
+    guard !text_chars.isEmpty
+      else { throw ParsError.emptyInput(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
+    
+    // Surely there has to be a better way of doing this...
+    var match = ""
+    for text_char in text_chars {
+      if sigChars.contains(text_char) == inverse {
+        break
+
+      } else {
+        match.append(String(text_char))
+
+      }
+
+    }
+
+
+    // Ensure we found something! This is different from the guard-
+    // check above, in that we need to distinguish no-input from no-match.
+    guard !match.isEmpty
+      else { throw ParsError.noMatch(origin: "in Terminal \(inverse ? "excepting" : "with") \"\(String(sigChars))\"") }
+    
+    return ParsleyAST( kind: kind,
+                       children: [],
+                       text: match,
+                       parentOffset: parentOffset )
+  }
+
+}
+
+
 class ParsleySeq: Parsley {
   let seq: [Parsley]
   let kind: ASTKind
   
-  required init(fromArray: [Parsley], kind: ASTKind = .Sequence) {
+  required init(fromArray: [Parsley], kind: ASTKind = .sequence) {
     self.seq = fromArray
     self.kind = kind
   }
   
-  convenience init(_ seq: Parsley..., kind: ASTKind = .Sequence) {
+  convenience init(_ seq: Parsley..., kind: ASTKind = .sequence) {
     self.init(fromArray: seq, kind: kind)
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
-    return self.dynamicType.init(fromArray: self.seq, kind: imposed)
+  func ofKind(_ imposed: ASTKind) -> Self {
+    return type(of: self).init(fromArray: self.seq, kind: imposed)
   }
   
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     let textChars = text.unicodeScalars
     
     var runningOffset = 0
@@ -345,16 +376,16 @@ class ParsleyRun: Parsley {
   let reps: Parsley
   let kind: ASTKind
   
-  required init(_ reps: Parsley, kind: ASTKind = .Sequence) {
+  required init(_ reps: Parsley, kind: ASTKind = .sequence) {
     self.reps = reps
     self.kind = kind
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
-    return self.dynamicType.init(reps, kind: imposed)
+  func ofKind(_ imposed: ASTKind) -> Self {
+    return type(of: self).init(reps, kind: imposed)
   }
   
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     let textChars = text.unicodeScalars
     
     var matches: [ParsleyAST] = []
@@ -373,9 +404,9 @@ class ParsleyRun: Parsley {
           break
         }
         
-      } catch ParsError.NoMatch {
+      } catch ParsError.noMatch {
         break
-      } catch ParsError.EmptyInput {
+      } catch ParsError.emptyInput {
         // Woooot! We parsed the entire input!
         break
       }
@@ -383,7 +414,7 @@ class ParsleyRun: Parsley {
     
     // A run requires at least one match.
     guard matches.count > 0
-      else { throw ParsError.NoMatch(origin: "in Run of \(reps) -> \(kind)") }
+      else { throw ParsError.noMatch(origin: "in Run of \(reps) -> \(kind)") }
     
     let matchedText = String(text.unicodeScalars.prefix(runningOffset))
     return ParsleyAST(kind: kind, children: matches, text: matchedText, parentOffset: parentOffset)
@@ -396,7 +427,7 @@ class ParsleyHopper: Parsley {
   let seq: [Parsley]
   let kind: ASTKind
   
-  required init(fromArray: [Parsley], imposedKind: ASTKind = .Nil) {
+  required init(fromArray: [Parsley], imposedKind: ASTKind = .nil) {
     assert(fromArray.count > 0, "A Hopper must have at least one alternative to try.")
     self.seq = fromArray
     self.kind = imposedKind
@@ -406,27 +437,27 @@ class ParsleyHopper: Parsley {
     self.init(fromArray: seq)
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
-    return self.dynamicType.init(fromArray: seq, imposedKind: imposed)
+  func ofKind(_ imposed: ASTKind) -> Self {
+    return type(of: self).init(fromArray: seq, imposedKind: imposed)
   }
   
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     var firstMatch: ParsleyAST? = nil
     for hop in seq {
       do {
         firstMatch = try hop.pars(text, parentOffset: parentOffset)
         break
         
-      } catch ParsError.NoMatch {
+      } catch ParsError.noMatch {
         // Carry on
       }
     }
     
     // If none of them stuck, propagate the no-match:
     guard firstMatch != nil
-      else { throw ParsError.NoMatch(origin: "in Hopper of \(seq)") }
+      else { throw ParsError.noMatch(origin: "in Hopper of \(seq)") }
     
-    if self.kind != .Nil {
+    if self.kind != .nil {
       // We have an explicit kind to impose upon the resulting AST:
       firstMatch = firstMatch!.ofKind(self.kind)
     }
@@ -446,19 +477,19 @@ class ParsleyOptional: Parsley {
     self.kind = sub.kind
   }
   
-  func ofKind(imposed: ASTKind) -> Self {
+  func ofKind(_ imposed: ASTKind) -> Self {
     // Instead of trying to impose upon output, as the Hopper does,
     // we'll just impose the kind on the wrapped sprig:
-    return self.dynamicType.init( sub.ofKind(imposed) )
+    return type(of: self).init( sub.ofKind(imposed) )
   }
   
-  func pars(text: String, parentOffset: Int) throws -> ParsleyAST {
+  func pars(_ text: String, parentOffset: Int) throws -> ParsleyAST {
     do {
       return try sub.pars(text, parentOffset: parentOffset)
       
-    } catch ParsError.NoMatch {
+    } catch ParsError.noMatch {
       return ParsleyAST()  // nil AST
-    } catch ParsError.EmptyInput {
+    } catch ParsError.emptyInput {
       return ParsleyAST()  // nil AST
     }
   }
@@ -467,7 +498,7 @@ class ParsleyOptional: Parsley {
 
 
 
-postfix operator ... {}
+postfix operator ...
 postfix func ... (reps: Parsley) -> ParsleyRun {
   return ParsleyRun(reps)
 }
@@ -512,28 +543,42 @@ prefix func ! (term: ParsleyWildcard) -> ParsleyWildcard {
   return term.not()
 }
 
-prefix operator % {}
+prefix operator %
 prefix func % (terminalExact: String) -> ParsleyExact {
-  return ParsleyExact(text: terminalExact, kind: .Terminal)
+  return ParsleyExact(text: terminalExact, kind: .terminal)
 }
 
-prefix operator * {}
+prefix operator ^
+prefix func ^ (terminalChars: String) -> ParsleyCharoset {
+  return ParsleyCharoset(with: terminalChars, kind: .terminal)
+}
+
+prefix operator !^
+prefix func !^ (nonterminalChars: String) -> ParsleyCharoset {
+  return ParsleyCharoset(excepting: nonterminalChars, kind: .terminal)
+}
+
+prefix operator *
 prefix func * (terminalChars: String) -> ParsleyWildcard {
   return ParsleyWildcard(with: terminalChars)
 }
 
-prefix operator !* {}
+prefix operator !*
 prefix func !* (nonterminalChars: String) -> ParsleyWildcard {
   return ParsleyWildcard(excepting: nonterminalChars)
 }
 
-// Lower precedence than logical or; higher than ternary conditional:
-infix operator -- { associativity left precedence 105 }
+// Lower precedence than ternary conditional, higher than assignment:
+precedencegroup SuffixPrecedence {
+  associativity: left
+  lowerThan: TernaryPrecedence
+}
+infix operator -- : SuffixPrecedence
 func -- <ParsleyType: Parsley>(lhs: ParsleyType, rhs: ASTKind) -> ParsleyType {
   return lhs.ofKind(rhs)
 }
 
-postfix operator ~ {}
+postfix operator ~
 postfix func ~ (sub: Parsley) -> ParsleyOptional {
   return ParsleyOptional(sub)
 }
@@ -550,16 +595,16 @@ func | <LHSType: ParsleyWildcard> (lhs: LHSType, rhs: ParsleyWildcard) -> LHSTyp
 
 let literal_whitespace = *(" \n\r\t" +
   "\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}" +
-  "\u{2008}\u{2009}\u{200a}\u{202f}\u{205f}\u{3000}")  -- .Whitespace
+  "\u{2008}\u{2009}\u{200a}\u{202f}\u{205f}\u{3000}")  -- .whitespace
 
 
-let comment_starter = *";"                      -- .Commentary
-let eol = *"\n"                                 -- .Whitespace
-let commentBody = !eol                          -- .Commentary
+let comment_starter = %";"                      -- .commentary
+let eol = %"\n"                                 -- .whitespace
+let commentBody = !*"\n"                        -- .commentary
 let commentary =
-  comment_starter + commentBody + eol~          -- .Commentary
+  comment_starter + commentBody + eol~          -- .commentary
 
-let ws = (literal_whitespace || commentary)...  -- .Whitespace
+let ws = (literal_whitespace || commentary)...  -- .whitespace
 
 
 let block_openers = *"([{\"“‘"
@@ -572,9 +617,9 @@ let token_separatives = block_delimiters
   | declaration_end
   | comment_starter
   | literal_whitespace
-let bare_word = !token_separatives              -- .BareWord
+let bare_word = !token_separatives              -- .bareWord
 
-let symbolic_reference_expression = bare_word   -- .Expression(.SymbolicReference)
+let symbolic_reference_expression = bare_word   -- .expression(.symbolicReference)
 let integer_literal = (*"-")~ + *"0123456789"
 let dq_text_segments = !*"”" + *"”"
 let dq_text_literal = *"“" + dq_text_segments + *"”"
